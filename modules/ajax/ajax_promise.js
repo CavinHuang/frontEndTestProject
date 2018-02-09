@@ -18,7 +18,7 @@ class ajaxClass {
 			timeout: 3000,
 			data: {},
 			header: {},
-			json: true
+			dataType: 'json'
 		}
 		this.options = Object.assign( {}, this.defaultOptios, options )
 		this._data = ''
@@ -34,7 +34,7 @@ class ajaxClass {
 		this._ajax.timeout = this.options.timeout
 
 		this.parseData()
-		this.send()
+		return this.send()
 	}
 
 	/**
@@ -51,11 +51,11 @@ class ajaxClass {
 			method: method,
 			url: url,
 			data: data,
-			success: callback
 		}
-
+		if ( callback ) sysOptions[ 'success' ] = callback
 		this.options = Object.assign( {}, this.defaultOptios, sysOptions, options )
-		this.init()
+
+		return this.init()
 	}
 
 	/**
@@ -63,7 +63,7 @@ class ajaxClass {
 	 * @return {[type]} [description]
 	 */
 	parseData() {
-		this.buildUrl()
+		// this.buildUrl()
 
 		let _dataStr = json2url( this.options.data )
 		this.addSelfData( _dataStr )
@@ -85,15 +85,6 @@ class ajaxClass {
 		}
 		this.options.url = _url ? _url : url
 		this.addSelfData( tmpStr )
-	}
-
-	bind() {
-		this._ajax.loadstart = ( evt ) => {
-			console.log( 'loadstart', evt );
-		}
-		this._ajax.progress = ( evt ) => {
-			console.log( 'progress', evt );
-		}
 	}
 
 	/**
@@ -118,29 +109,49 @@ class ajaxClass {
 	 * @return {[type]} [description]
 	 */
 	send() {
-		this.setRequestHeader(); // 设置头部
-		// 判断请求类型
-		switch ( this.options.method.toLowerCase() ) {
-		case 'get':
-			this._ajax.open( 'GET', this.options.url + '?' + this._data, true )
-			this._ajax.send()
-			break;
-		case 'post':
-			this._ajax.open( 'POST', this.options.url, true )
-			this._ajax.setRequestHeader( 'Content-Type', 'application/x-www-form-urlencoded' )
-			this._ajax.send( this._data )
-		}
-		this.bind()
-		// 响应请求
-		this._ajax.onreadystatechange = ( evt ) => {
-			if ( this._ajax.readyState === 4 ) {
-				if ( this._ajax.status >= 200 && this._ajax.status < 300 || this._ajax.status === 304 ) {
-					this.success( this._ajax.responseText )
-				} else {
-					this.errorHandel( this._ajax.status )
+		// this._ajax.responseType = this.options.dataType
+		return new Promise( ( resolve, reject ) => {
+			this.setRequestHeader(); // 设置头部
+			// 判断请求类型
+			switch ( this.options.method.toLowerCase() ) {
+			case 'get':
+				this._ajax.open( 'GET', this.options.url + '?' + this._data, true )
+				this._ajax.send()
+				break;
+			default:
+				this._ajax.open( this.options.method.toUpperCase(), this.options.url, true )
+				this._ajax.setRequestHeader( 'Content-Type', 'application/x-www-form-urlencoded' )
+				this._ajax.send( this._data )
+			}
+			// 响应请求
+			this.fireHooks( 'beforeSend' )
+			this._ajax.onreadystatechange = ( evt ) => {
+				let state = this._ajax.readyState
+				if ( state === 2 ) {
+					this.fireHooks( 'sendSucess' )
+				} else if ( state === 3 ) {
+					this.fireHooks( 'getPathData' )
+				} else if ( state === 4 ) {
+					if ( this._ajax.status >= 200 && this._ajax.status < 300 || this._ajax.status === 304 ) {
+						this.response = this.responseHandle( this._ajax.responseText )
+						resolve( this.response )
+						this.fireHooks( 'finish' )
+					} else {
+						reject( this.errorHandel( this._ajax.status ) )
+					}
 				}
 			}
-		}
+		} )
+
+	}
+	/**
+	 * 触发钩子函数
+	 * @param  {[type]} handle [description]
+	 * @return {[type]}        [description]
+	 */
+	fireHooks( handle, args ) {
+		let arg = args ? args : this._ajax
+		this.options.hasOwnProperty( handle ) && this.options[ handle ].call( this, arg )
 	}
 
 	debug() {
@@ -148,17 +159,11 @@ class ajaxClass {
 	}
 
 	/**
-	 * 发请求之前钩子
-	 * @return {[type]} [description]
-	 */
-	beforeSend() {}
-
-	/**
 	 * 请求发送成功，并取回数据
 	 * @return {[type]} [description]
 	 */
-	success( response ) {
-		this.options[ 'success' ].call( this, this.responseHandle( response ) )
+	success() {
+		this.options.hasOwnProperty( 'success' ) && this.options[ 'success' ].call( this, this.response )
 	}
 
 	/** 处理返回结果
@@ -168,7 +173,7 @@ class ajaxClass {
 	responseHandle( res ) {
 		let obj
 		try {
-			obj = this.options.json ? JSON.parse( res ) : res
+			obj = this.options.dataType.toLowerCase() == 'json' ? JSON.parse( res ) : res
 		} catch ( e ) {
 			obj = res
 		}
@@ -184,9 +189,13 @@ class ajaxClass {
 	}
 }
 // "put", "patch", "head", "delete"
-[ "get", "post" ].forEach( e => {
-	ajaxClass.prototype[ e ] = function ( url, data, option, callback ) {
-		return this.createInstance( e, url, data, option, callback )
+[ 'POST', 'GET', 'PUT', 'DELETE', 'PATCH', 'OPTIONS' ].forEach( e => {
+	ajaxClass.prototype[ e.toLowerCase() ] = function ( url, data, options, callback ) {
+		if ( options instanceof Function && !callback ) {
+			callback = options
+			option = null
+		}
+		return this.createInstance( e, url, data, options, callback )
 	}
 } )
 export default ajaxClass

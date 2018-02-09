@@ -6,7 +6,7 @@ const port = process.env.NODE_ENV || 9000
 const uri = "http://localhost:" + port
 module.exports = {
 	entry: {
-		app: path.resolve( __dirname, './src/index.js' )
+		ajax: path.resolve( __dirname, './src/ajax/index.js' )
 	},
 	output: {
 		filename: './js/[name].bundle.[hash].js',
